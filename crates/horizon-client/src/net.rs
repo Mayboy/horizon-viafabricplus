@@ -380,13 +380,21 @@ fn run(
                 target
             }
         };
-        let c = if address.starts_with(FRIEND) {
+        let mut c = if address.starts_with(FRIEND) {
             // The friends relay supplies a concrete endpoint, not a Minecraft hostname.
             Connection::connect(&host, port, Duration::from_secs(10))
         } else {
             Connection::connect_server(&host, port, Duration::from_secs(10))
         }
         .map_err(|e| e.to_string())?;
+        // A server of another version: translate every packet (a friend's
+        // world is always Horizon's own).
+        if !address.starts_with(FRIEND)
+            && let Some((translator, version)) = crate::multiversion::target(address)
+        {
+            status(send, &format!("Connecting as {version}..."));
+            c.set_translator(translator);
+        }
         (host, port, c)
     };
     *shared_counters.lock().unwrap() = Some(c.reader.counters.clone());

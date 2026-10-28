@@ -19,6 +19,7 @@ horizon-threads = { path = "../horizon-threads" }
 horizon-hdr = { path = "../horizon-hdr" }
 horizon-world = { path = "../horizon-world" }
 horizon-protocol = { path = "../horizon-protocol" }
+horizon-multiversion = { path = "../horizon-multiversion" }
 # server.properties, eula.txt and the user lists, shared with horizon-server.
 horizon-server-files = { path = "../horizon-server-files" }
 # Shader packs: reading them and turning their GLSL into naga modules.

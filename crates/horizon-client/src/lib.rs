@@ -111,6 +111,7 @@ pub mod models;
 pub mod motion;
 pub mod moved_extras;
 pub mod multiplayer;
+pub mod multiversion;
 pub mod music;
 pub mod net;
 pub mod nether_portal;

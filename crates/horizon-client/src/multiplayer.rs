@@ -76,6 +76,9 @@ pub enum Screen {
         /// Server Resource Packs (`acceptTextures`): Enabled, Disabled, or
         /// none for Prompt.
         packs: Option<bool>,
+        /// The protocol version to join with: "auto" or a version name
+        /// (`crate::multiversion`).
+        version: String,
     },
     Direct {
         address: String,
@@ -483,7 +486,12 @@ impl Screen {
                     ),
                 ]
             }
-            Self::Edit { address, packs, .. } => vec![
+            Self::Edit {
+                address,
+                packs,
+                version,
+                ..
+            } => vec![
                 // ManageServerScreen's CycleButton, above Done.
                 b(
                     w / 2.0 - 100.0,
@@ -492,6 +500,15 @@ impl Screen {
                     &pack_setting_label(*packs),
                     true,
                     60,
+                ),
+                // The protocol version (horizon-multiversion), between them.
+                b(
+                    w / 2.0 - 100.0,
+                    h / 4.0 + 93.0,
+                    200.0,
+                    &crate::multiversion::label(version),
+                    true,
+                    61,
                 ),
                 b(
                     w / 2.0 - 100.0,
@@ -1037,6 +1054,7 @@ impl Screen {
                     address: String::new(),
                     focus: 1,
                     packs: None,
+                    version: crate::multiversion::AUTO.to_owned(),
                 }
             }
             (
@@ -1050,6 +1068,7 @@ impl Screen {
                     *self = Self::Edit {
                         index: Some(i),
                         name: s.name,
+                        version: crate::multiversion::saved(&s.ip),
                         address: s.ip,
                         focus: 0,
                         packs: s.accept_textures,
@@ -1175,16 +1194,21 @@ impl Screen {
                     None => Some(true),
                 }
             }
+            (Self::Edit { version, .. }, Some(61)) => {
+                *version = crate::multiversion::next(version);
+            }
             (
                 Self::Edit {
                     index,
                     name,
                     address,
                     packs,
+                    version,
                     ..
                 },
                 Some(50),
             ) => {
+                crate::multiversion::save(address.trim(), version);
                 let mut list = servers::load(&servers_file(saves));
                 let mut entry = ServerEntry::new(name.trim(), address.trim());
                 entry.accept_textures = *packs;

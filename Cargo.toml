@@ -16,6 +16,7 @@ members = [
     "crates/horizon-bots",
     "crates/horizon-assets",
     "crates/horizon-protocol",
+    "crates/horizon-multiversion",
     "crates/horizon-theme",
     "crates/horizon-prepare",
     "crates/horizon-telemetry",

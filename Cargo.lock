@@ -1387,6 +1387,7 @@ dependencies = [
  "horizon-hdr",
  "horizon-items",
  "horizon-mods",
+ "horizon-multiversion",
  "horizon-protocol",
  "horizon-server-files",
  "horizon-shader-api",
@@ -1530,6 +1531,14 @@ name = "horizon-mods-test-ui-guest"
 version = "0.1.0"
 dependencies = [
  "horizon-mod-sdk",
+]
+
+[[package]]
+name = "horizon-multiversion"
+version = "0.1.0"
+dependencies = [
+ "horizon-protocol",
+ "horizon-world",
 ]
 
 [[package]]

@@ -838,6 +838,7 @@ fn server_fields_edit_at_their_cursor() {
         address: String::new(),
         focus: 1,
         packs: None,
+        version: crate::multiversion::AUTO.to_owned(),
     });
     f.title.type_text("localhost");
     for _ in 0..4 {

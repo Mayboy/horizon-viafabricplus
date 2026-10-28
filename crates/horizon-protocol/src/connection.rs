@@ -3,7 +3,13 @@
 //! splits into a reader (for a receive thread) and a shareable writer. It runs
 //! over TCP, or over an in-memory pipe between two threads of one process
 //! (vanilla's `LocalChannel`, which an integrated server's player uses).
-use crate::{Error, Result, buf::Reader, crypto::Cfb8, frame};
+use crate::{
+    Error, Result,
+    buf::{Reader, Writer},
+    crypto::Cfb8,
+    frame,
+    translate::{Packet, Shared},
+};
 use std::{
     io::{Read, Write},
     net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs},
@@ -173,12 +179,17 @@ pub struct ConnReader {
     decrypt: Option<Cfb8>,
     pub threshold: Option<usize>,
     pub counters: Arc<Counters>,
+    /// Translates from the server's protocol version, when it isn't ours.
+    translator: Option<Shared>,
+    /// Translated packets not returned yet.
+    ready: std::collections::VecDeque<Packet>,
 }
 pub struct ConnWriter {
     stream: Stream,
     encrypt: Option<Cfb8>,
     pub threshold: Option<usize>,
     counters: Arc<Counters>,
+    translator: Option<Shared>,
 }
 /// `InetAddress.getByName` under Java's default `java.net.preferIPv6Addresses=false`: IPv4
 /// addresses first, whatever order the system resolver gives (macOS lists IPv6 first). Vanilla
@@ -238,14 +249,23 @@ impl Connection {
                 decrypt: None,
                 threshold: None,
                 counters: counters.clone(),
+                translator: None,
+                ready: Default::default(),
             },
             writer: ConnWriter {
                 stream: write,
                 encrypt: None,
                 threshold: None,
                 counters,
+                translator: None,
             },
         })
+    }
+    /// Translate every packet from here on (the handshake included) to and
+    /// from another protocol version.
+    pub fn set_translator(&mut self, translator: Shared) {
+        self.reader.translator = Some(translator.clone());
+        self.writer.translator = Some(translator);
     }
     /// `Connection.isMemoryConnection`: through a [`Pipe`] rather than a socket.
     pub fn is_memory(&self) -> bool {
@@ -279,13 +299,30 @@ impl ConnReader {
     /// Block until a whole packet arrives: (id, payload).
     pub fn recv(&mut self) -> Result<(i32, Vec<u8>)> {
         loop {
+            if let Some(translator) = &self.translator {
+                self.ready
+                    .extend(translator.lock().unwrap().take_clientbound());
+            }
+            if let Some(p) = self.ready.pop_front() {
+                return Ok((p.id, p.data));
+            }
             if let Some(frame) = frame::split(&mut self.buffer)? {
                 let body = frame::decompress(frame, self.threshold)?;
                 let mut r = Reader::new(&body);
                 let id = r.varint()?;
                 let start = r.position();
                 self.counters.received.fetch_add(1, Ordering::Relaxed);
-                return Ok((id, body[start..].to_vec()));
+                let data = body[start..].to_vec();
+                let Some(translator) = &self.translator else {
+                    return Ok((id, data));
+                };
+                let mut out = Vec::new();
+                translator
+                    .lock()
+                    .unwrap()
+                    .clientbound(Packet::new(id, data), &mut out)?;
+                self.ready.extend(out);
+                continue;
             }
             let mut chunk = [0u8; 16384];
             let n = self.stream.read(&mut chunk)?;
@@ -309,7 +346,23 @@ impl ConnReader {
 impl ConnWriter {
     /// Send one packet body (VarInt id + payload).
     pub fn send(&mut self, body: &[u8]) -> Result<()> {
-        self.send_contents(&frame::contents(body, self.threshold)?)
+        let Some(translator) = &self.translator else {
+            return self.send_contents(&frame::contents(body, self.threshold)?);
+        };
+        let mut r = Reader::new(body);
+        let id = r.varint()?;
+        let mut out = Vec::new();
+        translator
+            .lock()
+            .unwrap()
+            .serverbound(Packet::new(id, r.rest().to_vec()), &mut out)?;
+        for p in out {
+            let mut w = Writer::new();
+            w.varint(p.id);
+            w.bytes(&p.data);
+            self.send_contents(&frame::contents(&w.data, self.threshold)?)?;
+        }
+        Ok(())
     }
     /// Send a frame whose contents [`frame::contents`] made with this
     /// writer's threshold.
